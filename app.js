@@ -1,3 +1,13 @@
+// ---- iOS fallback storage (IndexedDB → localStorage) ----
+const USE_LOCAL = true;
+
+function lsGet(key) {
+  return JSON.parse(localStorage.getItem(key) || "[]");
+}
+function lsSet(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
 /* DenkApp - offline PWA, 2 profielen, lokale opslag (IndexedDB)
    - "te bespreken" => Agenda (niet afvinkbaar)
    - CBS / Persbericht / Communicatie tags automatisch
@@ -31,242 +41,65 @@ function formatDue(dueISO) {
 }
 
 // ---------- IndexedDB ----------
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-
-      if (!db.objectStoreNames.contains("inbox")) {
-        const s = db.createObjectStore("inbox", { keyPath: "id" });
-        s.createIndex("byProfile", "profileId", { unique: false });
-        s.createIndex("byCreatedAt", "createdAt", { unique: false });
-      }
-
-      if (!db.objectStoreNames.contains("tasks")) {
-        const s = db.createObjectStore("tasks", { keyPath: "id" });
-        s.createIndex("byProfile", "profileId", { unique: false });
-        s.createIndex("byType", "type", { unique: false });
-        s.createIndex("byDone", "done", { unique: false });
-        s.createIndex("byDue", "dueAt", { unique: false });
-      }
-
-      if (!db.objectStoreNames.contains("nodes")) {
-        const s = db.createObjectStore("nodes", { keyPath: "id" });
-        s.createIndex("byProfile", "profileId", { unique: false });
-        s.createIndex("byParent", "parentId", { unique: false });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+// ---- LocalStorage opslag (iOS-proof) ----
+function getAllInbox() {
+  return Promise.resolve(lsGet("inbox_" + currentProfile));
 }
 
-async function tx(storeName, mode, fn) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(storeName, mode);
-    const store = t.objectStore(storeName);
-    let result;
-    t.oncomplete = () => resolve(result);
-    t.onerror = () => reject(t.error);
-    result = fn(store);
-  });
+function getAllTasks() {
+  return Promise.resolve(lsGet("tasks_" + currentProfile));
 }
 
-function uid() {
-  return Math.random().toString(16).slice(2) + "-" + Date.now().toString(16);
+function getAllNodes() {
+  return Promise.resolve(lsGet("nodes_" + currentProfile));
 }
 
-// ---------- Parsing (heuristiek) ----------
-const ACTION_VERBS = [
-  "bel","mail","stuur","plan","maak","vraag","check","controleer","regel","boek","koop","betaal",
-  "herinner","breng","haal","bestel","fix","neem","schrijf","werk","overleg","vergader","contacteer"
-];
-
-function detectDue(text) {
-  const t = text.toLowerCase();
-  const now = new Date();
-
-  if (t.includes("vandaag")) {
-    const dt = new Date(now);
-    dt.setHours(18,0,0,0);
-    return dt.toISOString();
-  }
-  if (t.includes("morgen")) {
-    const dt = new Date(now);
-    dt.setDate(dt.getDate() + 1);
-    dt.setHours(18,0,0,0);
-    return dt.toISOString();
-  }
-
-  const weekdays = ["zondag","maandag","dinsdag","woensdag","donderdag","vrijdag","zaterdag"];
-  for (let i=0;i<weekdays.length;i++){
-    if (t.includes(weekdays[i])) {
-      const target = i;
-      const dt = new Date(now);
-      const current = dt.getDay();
-      let delta = (target - current + 7) % 7;
-      if (delta === 0) delta = 7;
-      dt.setDate(dt.getDate() + delta);
-      dt.setHours(18,0,0,0);
-      return dt.toISOString();
-    }
-  }
-  return null;
-}
-
-function cleanTitle(s) {
-  return s.trim().replace(/\s+/g," ").replace(/^[\-\*\•\d\.\)\(]+\s*/,"");
-}
-
-function splitSentences(raw) {
-  return raw
-    .split(/[\n;\.]+/g)
-    .map(s => cleanTitle(s))
-    .filter(Boolean);
-}
-
-function extractTags(text) {
-  const t = text.trim();
-  const tags = new Set();
-
-  // expliciet: "tag: X"
-  const m = t.match(/tag:\s*([a-zA-Z0-9à-žÀ-Ž _-]+)/i);
-  if (m) tags.add(cleanTitle(m[1]));
-
-  const low = t.toLowerCase();
-
-  // automatische tags (jouw wensen)
-  const rules = [
-    { k: ["cbs", "college", "schepencollege", "college van burgemeester en schepenen"], tag: "CBS" },
-    { k: ["te bespreken", "bespreken", "agendapunt", "agenda"], tag: "Te bespreken" },
-    { k: ["Klaas"], tag: "Klaas" },
-     
-    { k: ["communicatie", "facebook", "instagram", "post", "bericht", "aankondiging"], tag: "Communicatie" },
-    { k: ["persbericht", "persmededeling", "media", "journalist", "krant", "radio", "tv"], tag: "Persbericht" },
-
-    // (optioneel) enkele thema’s
-    { k: ["wegen","fietspad","mobiliteit","trage wegen","signalisatie"], tag: "Mobiliteit" },
-    { k: ["school","onderwijs","bko","kinderopvang"], tag: "Onderwijs" },
-    { k: ["sport","club","hal"], tag: "Sport" },
-    { k: ["cultuur","santro","evenement","libbeke"], tag: "Cultuur/Events" },
-    { k: ["privé","gezin","thuis"], tag: "Thuis" }
-  ];
-
-  for (const r of rules) {
-    if (r.k.some(x => low.includes(x))) tags.add(r.tag);
-  }
-
-  return [...tags];
-}
-
-function classifySentence(s) {
-  const low = s.toLowerCase();
-
-  // Agenda: "te bespreken" => niet afvinkbaar
-  if (low.includes("te bespreken") || low.startsWith("te bespreken")) return "agenda";
-
-  // Idee als het begint met "idee" of "misschien"
-  if (low.startsWith("idee") || low.startsWith("misschien")) return "idea";
-
-  // Taak als het start met werkwoord
-  const first = low.split(" ")[0];
-  if (ACTION_VERBS.includes(first)) return "task";
-
-  // Taak als het "moet" bevat
-  if (low.includes("moet")) return "task";
-
-  return "note";
-}
-
-function parseInput(raw) {
-  const parts = splitSentences(raw);
-  const tasks = [];
-  const ideas = [];
-  const notes = [];
-
-  for (const p of parts) {
-    const kind = classifySentence(p);
-    const due = detectDue(p);
-    const tags = extractTags(p);
-
-    if (kind === "task") {
-      tasks.push({ title: p, dueAt: due, tags, type: "task" });
-    } else if (kind === "agenda") {
-      tasks.push({ title: p, dueAt: null, tags: [...new Set([...(tags||[]), "Te bespreken"])], type: "agenda" });
-    } else if (kind === "idea") {
-      ideas.push({ title: p, tags });
-    } else {
-      notes.push({ title: p, tags });
-    }
-  }
-  return { tasks, ideas, notes };
-}
-
-// ---------- Data opslaan ----------
-async function addInboxItem(rawText) {
+function addInboxItem(rawText) {
+  const list = lsGet("inbox_" + currentProfile);
   const item = {
     id: uid(),
     profileId: currentProfile,
     rawText,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
   };
-  await tx("inbox", "readwrite", (s) => s.put(item));
-  return item;
+  list.push(item);
+  lsSet("inbox_" + currentProfile, list);
+  return Promise.resolve(item);
 }
 
-async function addTask(t, sourceInboxId) {
+function addTask(t, sourceInboxId) {
+  const list = lsGet("tasks_" + currentProfile);
   const task = {
     id: uid(),
     profileId: currentProfile,
-    type: t.type || "task",                 // "task" of "agenda"
+    type: t.type || "task",
     title: cleanTitle(t.title),
     dueAt: t.dueAt || null,
-    done: (t.type === "agenda") ? null : false,  // agenda niet afvinkbaar
+    done: (t.type === "agenda") ? null : false,
     createdAt: new Date().toISOString(),
     sourceInboxId: sourceInboxId || null,
     tags: t.tags || []
   };
-  await tx("tasks", "readwrite", (s) => s.put(task));
-  return task;
+  list.push(task);
+  lsSet("tasks_" + currentProfile, list);
+  return Promise.resolve(task);
 }
 
-async function ensureNode(title, parentId=null) {
-  title = cleanTitle(title);
-  const existing = await getAllNodes();
-  const hit = existing.find(n => n.profileId === currentProfile && n.title.toLowerCase() === title.toLowerCase() && n.parentId === parentId);
-  if (hit) return hit;
-
-  const node = {
-    id: uid(),
-    profileId: currentProfile,
-    title,
-    parentId,
-    createdAt: new Date().toISOString(),
-  };
-  await tx("nodes", "readwrite", (s) => s.put(node));
-  return node;
+function toggleTaskDone(taskId, done) {
+  const list = lsGet("tasks_" + currentProfile);
+  const item = list.find(x => x.id === taskId);
+  if (item) item.done = done;
+  lsSet("tasks_" + currentProfile, list);
+  return Promise.resolve(true);
 }
 
-async function getAllInbox() { return await tx("inbox", "readonly", (s) => s.getAll()); }
-async function getAllTasks() { return await tx("tasks", "readonly", (s) => s.getAll()); }
-async function getAllNodes() { return await tx("nodes", "readonly", (s) => s.getAll()); }
-
-async function toggleTaskDone(taskId, done) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction("tasks", "readwrite");
-    const store = t.objectStore("tasks");
-    const r = store.get(taskId);
-    r.onsuccess = () => {
-      const obj = r.result;
-      obj.done = done;
-      store.put(obj);
-    };
-    t.oncomplete = () => resolve(true);
-    t.onerror = () => reject(t.error);
-  });
+function ensureNode(title) {
+  const list = lsGet("nodes_" + currentProfile);
+  if (!list.find(x => x.title === title)) {
+    list.push({ id: uid(), title, profileId: currentProfile });
+    lsSet("nodes_" + currentProfile, list);
+  }
+  return Promise.resolve(true);
 }
 
 // ---------- UI render ----------
