@@ -1,11 +1,91 @@
 <!doctype html>
 <html lang="nl">
 <head>
-  <meta charset="utf-8">
-  <title>Gedachtengang</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DenkApp</title>
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <style>
+    body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Arial; margin: 0; background:#f6f6f6; }
+    header { position: sticky; top: 0; background: #fff; padding: 12px; box-shadow: 0 1px 8px rgba(0,0,0,.06); }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .chip { padding:8px 10px; border-radius: 999px; border:1px solid #ddd; background:#fff; cursor:pointer; }
+    .chip.active { border-color:#111; }
+    main { padding: 12px; max-width: 980px; margin: 0 auto; }
+    .card { background:#fff; border:1px solid #e6e6e6; border-radius:14px; padding:12px; margin: 10px 0; }
+    textarea { width:100%; min-height: 90px; border-radius: 12px; border:1px solid #ddd; padding:10px; font-size:16px; }
+    button { padding:10px 12px; border-radius:12px; border:1px solid #ddd; background:#111; color:#fff; cursor:pointer; }
+    button.secondary { background:#fff; color:#111; }
+    h2 { margin: 6px 0 10px; font-size: 18px; }
+    .cols { display:grid; grid-template-columns: 1fr; gap:10px; }
+    @media (min-width: 900px) { .cols { grid-template-columns: 1fr 1fr; } }
+    .small { color:#666; font-size: 13px; }
+    ul { padding-left: 18px; }
+    details { margin: 6px 0; }
+    .task { display:flex; gap:10px; align-items:flex-start; }
+    .task input { margin-top: 3px; }
+    .tag { display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; margin-left:6px; font-size:12px; color:#444; }
+    .due { color:#444; font-size:12px; margin-left:6px; }
+  </style>
 </head>
 <body>
-  <h1>Gedachtengang werkt ✅</h1>
-  <p>GitHub Pages is correct ingesteld.</p>
+  <header>
+    <div class="row">
+      <strong>DenkApp</strong>
+      <span class="small">inbox → agenda + to-do + mindmap</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span class="chip active" id="profileWork">Werk/Gemeente</span>
+      <span class="chip" id="profilePrivate">Privé</span>
+      <span class="small" id="status" style="margin-left:auto"></span>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Nieuwe gedachte</h2>
+      <div class="small">
+        Tip op iPhone: tik in het vak en gebruik de <b>microfoon</b> op je toetsenbord (dicteren).
+      </div>
+      <div style="margin-top:10px">
+        <textarea id="input" placeholder="Voorbeeld: CBS te bespreken: verkeersveiligheid. Persbericht: opening school tegen vrijdag. Communicatie: facebookpost over trage wegen."></textarea>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="add">Verwerken</button>
+        <button class="secondary" id="clear">Wissen</button>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <div class="card">
+          <h2>Agenda</h2>
+          <div class="small">Items met “te bespreken” (niet afvinkbaar).</div>
+          <div id="agenda"></div>
+        </div>
+
+        <div class="card">
+          <h2>To-do</h2>
+          <div class="small">Automatisch uit je gedachten gehaald. Je kan afvinken.</div>
+          <div id="tasks"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Mindmap</h2>
+        <div class="small">Onderwerpen als boomstructuur.</div>
+        <div id="mindmap"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Inbox (ruwe gedachten)</h2>
+      <div id="inbox"></div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
 </body>
 </html>
