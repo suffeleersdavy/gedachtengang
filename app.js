@@ -141,7 +141,8 @@ function extractTags(text) {
   const rules = [
     { k: ["cbs", "college", "schepencollege", "college van burgemeester en schepenen"], tag: "CBS" },
     { k: ["te bespreken", "bespreken", "agendapunt", "agenda"], tag: "Te bespreken" },
-
+    { k: ["Klaas"], tag: "Klaas" },
+     
     { k: ["communicatie", "facebook", "instagram", "post", "bericht", "aankondiging"], tag: "Communicatie" },
     { k: ["persbericht", "persmededeling", "media", "journalist", "krant", "radio", "tv"], tag: "Persbericht" },
 
