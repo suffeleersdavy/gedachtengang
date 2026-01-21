@@ -107,6 +107,27 @@ function toggleTaskDone(taskId, done) {
   lsSet(lsKey("tasks"), list);
   return Promise.resolve(true);
 }
+function deleteItemById(id) {
+  // verwijdert uit tasks van huidig profiel
+  const list = lsGet(lsKey("tasks"));
+  const next = list.filter(x => x.id !== id);
+  lsSet(lsKey("tasks"), next);
+  return Promise.resolve(true);
+}
+
+function clearDoneTasks() {
+  const list = lsGet(lsKey("tasks"));
+  const next = list.filter(x => !(x.type !== "agenda" && x.done === true));
+  lsSet(lsKey("tasks"), next);
+  return Promise.resolve(true);
+}
+
+function clearAgendaItems() {
+  const list = lsGet(lsKey("tasks"));
+  const next = list.filter(x => x.type !== "agenda");
+  lsSet(lsKey("tasks"), next);
+  return Promise.resolve(true);
+}
 
 function ensureNode(title) {
   title = cleanTitle(title);
@@ -277,14 +298,21 @@ async function render() {
     for (const a of agendaItems) {
       const div = document.createElement("div");
       div.style.margin = "10px 0";
-      div.innerHTML = `
-        <div><b>•</b> ${escapeHtml(a.title)}
+     div.innerHTML = `
+  <div>
+    <b>•</b> ${escapeHtml(a.title)}
+    <button class="secondary" data-del="${a.id}" style="padding:6px 10px; border-radius:10px; margin-left:8px;">Verwijder</button>
+
           ${(a.tags||[]).slice(0,3).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
         </div>
         <div class="small">${escapeHtml(formatDate(a.createdAt))}</div>
       `;
       agendaEl.appendChild(div);
-    }
+        div.querySelector("[data-del]")?.addEventListener("click", async (e) => {
+      await deleteItemById(e.target.getAttribute("data-del"));
+      render();
+    });
+}
   }
 
   // Tasks
@@ -299,7 +327,8 @@ async function render() {
       div.innerHTML = `
         <input type="checkbox" ${t.done ? "checked": ""} data-id="${t.id}" />
         <div>
-          <div style="${t.done ? "text-decoration:line-through; color:#777" : ""}">${escapeHtml(t.title)}
+          <div style="${t.done ? "text-decoration:line-through; color:#777" : ""}">${escapeHtml(t.title)} <button class="secondary" data-del="${t.id}" style="padding:6px 10px; border-radius:10px; margin-left:8px;">Verwijder</button>
+
             ${t.dueAt ? `<span class="due">• ${escapeHtml(formatDue(t.dueAt))}</span>` : ""}
             ${(t.tags||[]).slice(0,2).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
           </div>
@@ -315,6 +344,12 @@ async function render() {
       });
     });
   }
+    tasksEl.querySelectorAll("button[data-del]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        await deleteItemById(e.target.getAttribute("data-del"));
+        render();
+      });
+    });
 
   // Mindmap (tags)
   const mindEl = $("mindmap");
@@ -374,6 +409,15 @@ $("profileWork").addEventListener("click", () => { currentProfile = PROFILES.wor
 $("profilePrivate").addEventListener("click", () => { currentProfile = PROFILES.priv.id; render(); });
 
 $("clear").addEventListener("click", () => { $("input").value = ""; });
+$("clearDone").addEventListener("click", async () => {
+  await clearDoneTasks();
+  render();
+});
+
+$("clearAgenda").addEventListener("click", async () => {
+  await clearAgendaItems();
+  render();
+});
 
 $("add").addEventListener("click", async () => {
   const raw = $("input").value.trim();
